@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Integration Calculator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 900px;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+            color: #333;
+            text-align: center;
+        }
+        .main-layout {
+            display: flex;
+            gap: 25px;
+            flex-wrap: wrap;
+        }
+        .controls {
+            flex: 1;
+            min-width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus {
+            border-color: #007bff;
+        }
+        .limits-group {
+            display: flex;
+            gap: 15px;
+        }
+        .limits-group .input-group {
+            flex: 1;
+        }
+        .result-box {
+            background-color: #e9f5ff;
+            border-left: 5px solid #007bff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .result-box h3 {
+            margin: 0 0 5px 0;
+            color: #0056b3;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        #resultValue {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        .error {
+            color: #dc3545;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+        .chart-container {
+            flex: 1.5;
+            min-width: 320px;
+            position: relative;
+            height: 350px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Definite Integration Calculator</h1>
+    
+    <div class="main-layout">
+        <div class="controls">
+            <div class="input-group">
+                <label for="functionInput">Function f(x)</label>
+                <input type="text" id="functionInput" value="x^2 - 2x + 1" placeholder="e.g., sin(x), x^2, exp(x)">
+                <div id="errorMsg" class="error">Invalid math expression.</div>
+            </div>
+            
+            <div class="limits-group">
+                <div class="input-group">
+                    <label for="limitA">Lower Limit (a)</label>
+                    <input type="number" id="limitA" value="0" step="any">
+                </div>
+                <div class="input-group">
+                    <label for="limitB">Upper Limit (b)</label>
+                    <input type="number" id="limitB" value="3" step="any">
+                </div>
+            </div>
+            
+            <div class="result-box">
+                <h3>Area / Integral Result</h3>
+                <div id="resultValue">0.00</div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="integrationChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    let myChart = null;
+
+    // Numerical integration using Simpson's Rule
+    function simpsonsRule(f, a, b, n = 1000) {
+        if (n % 2 !== 0) n++; // Ensure n is even
+        const h = (b - a) / n;
+        let sum = f(a) + f(b);
+
+        for (let i = 1; i < n; i++) {
+            const x = a + i * h;
+            sum += i % 2 === 0 ? 2 * f(x) : 4 * f(x);
+        }
+        return (h / 3) * sum;
+    }
+
+    function calculateAndPlot() {
+        const expressionText = document.getElementById('functionInput').value;
+        const a = parseFloat(document.getElementById('limitA').value);
+        const b = parseFloat(document.getElementById('limitB').value);
+        const errorMsg = document.getElementById('errorMsg');
+        const resultValue = document.getElementById('resultValue');
+
+        errorMsg.style.display = 'none';
+
+        if (isNaN(a) || !expressionText) return;
+        
+        // Handle a blank or incomplete upper boundary gracefully during typing
+        let safeB = isNaN(b) ? a + 1 : b;
+
+        try {
+            // Compile the user formula using Math.js safely
+            const compiledExpr = math.compile(expressionText);
+            const f = (x) => compiledExpr.evaluate({ x: x });
+
+            // Test if the function is executable
+            f(a);
+
+            // 1. Calculate Integral
+            const integralResult = simpsonsRule(f, a, safeB);
+            resultValue.textContent = isNaN(integralResult) ? "Error" : integralResult.toFixed(5);
+
+            // 2. Generate Graph Data Points
+            // Setup responsive boundaries around the integral limits [a, b]
+            const padding = Math.max(Math.abs(safeB - a) * 0.3, 1);
+            const startX = Math.min(a, safeB) - padding;
+            const endX = Math.max(a, safeB) + padding;
+            
+            const totalPoints = 200;
+            const step = (endX - startX) / totalPoints;
+            
+            const lineData = [];
+            const fillData = [];
+
+            for (let i = 0; i <= totalPoints; i++) {
+                const currentX = startX + (i * step);
+                let currentY;
+                try {
+                    currentY = f(currentX);
+                } catch(e) {
+                    currentY = null;
+                }
+
+                if (typeof currentY === 'number' && !isNaN(currentY) && isFinite(currentY)) {
+                    lineData.push({ x: currentX, y: currentY });
+                    
+                    // Populate points that fall within the bounded integration window [a, b]
+                    if (currentX >= Math.min(a, safeB) && currentX <= Math.max(a, safeB)) {
+                        fillData.push({ x: currentX, y: currentY });
+                    }
+                }
+            }
+
+            // Ensure the exact bounds are integrated neatly into the filled area data
+            fillData.unshift({ x: Math.min(a, safeB), y: f(Math.min(a, safeB)) });
+            fillData.push({ x: Math.max(a, safeB), y: f(Math.max(a, safeB)) });
+
+            // 3. Render or Update Chart
+            if (myChart) {
+                myChart.data.datasets[0].data = lineData;
+                myChart.data.datasets[1].data = fillData;
+                myChart.options.scales.x.min = startX;
+                myChart.options.scales.x.max = endX;
+                myChart.update('none'); // Update smoothly without full reset animation
+            } else {
+                const ctx = document.getElementById('integrationChart').getContext('2d');
+                myChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            {
+                                label: `f(x) = ${expressionText}`,
+                                data: lineData,
+                                borderColor: '#007bff',
+                                borderWidth: 2.5,
+                                pointRadius: 0,
+                                fill: false,
+                                order: 1
+                            },
+                            {
+                                label: 'Integrated Area',
+                                data: fillData,
+                                borderColor: 'transparent',
+                                backgroundColor: 'rgba(0, 123, 255, 0.25)',
+                                fill: 'origin', // Shards area relative to the y=0 axis
+                                pointRadius: 0,
+                                order: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                type: 'linear',
+                                position: 'bottom',
+                                title: { display: true, text: 'x' }
+                            },
+                            y: {
+                                title: { display: true, text: 'y' }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+
+        } catch (err) {
+            errorMsg.style.display = 'block';
+            console.error(err);
+        }
+    }
+
+    // Attach real-time event listeners for seamless calculations
+    document.getElementById('functionInput').addEventListener('input', calculateAndPlot);
+    document.getElementById('limitA').addEventListener('input', calculateAndPlot);
+    document.getElementById('limitB').addEventListener('input', calculateAndPlot);
+
+    // Run calculation once on page initialization
+    window.onload = calculateAndPlot;
+</script>
+
+</body>
+</html>
